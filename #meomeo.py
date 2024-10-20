@@ -1,46 +1,173 @@
-#meomeo
 import tkinter as tk
 import random
+import csv
 from tkinter import messagebox
+from abc import ABC, abstractmethod
 
-class Game2048:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("2048")
-        self.root.geometry("400x400")
-        self.grid = [[0] * 4 for _ in range(4)]
+class User:
+    def __init__(self, username):
+        self.username = username
+
+
+class GameMode(ABC):
+    @abstractmethod
+    def create_widgets(self):
+        pass
+    @abstractmethod
+    def update_grid_ui(self):
+        pass
+
+
+class Tile:
+    def __init__(self, value=0):
+        self.__value = value 
+    def set_value(self, value):
+        self.__value = value
+    def get_value(self):
+        return self.__value
+
+
+class Board:
+    def __init__(self):
+        self.__grid = [[Tile() for _ in range(4)] for _ in range(4)]  # Private grid
+        self.__best_score = 0  
+        self.add_new_tile()
+        self.add_new_tile()
+
+    def add_new_tile(self):
+        empty_cells = [(i, j) for i in range(4) for j in range(4) if self.__grid[i][j].get_value() == 0]
+        if empty_cells:
+            i, j = random.choice(empty_cells)
+            self.__grid[i][j].set_value(2)
+
+    def get_grid_values(self):
+        return [[self.__grid[i][j].get_value() for j in range(4)] for i in range(4)]
+   
+    def compress(self):
+        changed = False
+        new_grid = [[Tile() for _ in range(4)] for _ in range(4)]
+        for i in range(4):
+            pos = 0
+            for j in range(4):
+                if self.__grid[i][j].get_value() != 0:
+                    new_grid[i][pos].set_value(self.__grid[i][j].get_value())
+                    if j != pos:
+                        changed = True
+                    pos += 1
+        self.__grid = new_grid
+        return changed
+    
+    def merge(self):
+        changed = False
+        for i in range(4):
+            for j in range(3):
+                if self.__grid[i][j].get_value() == self.__grid[i][j + 1].get_value() and self.__grid[i][j].get_value() != 0:
+                    new_value = self.__grid[i][j].get_value() * 2
+                    self.__grid[i][j].set_value(new_value)
+                    self.__grid[i][j + 1].set_value(0)
+                    changed = True
+                    if new_value > self.__best_score:
+                        self.__best_score = new_value
+        return changed
+    
+    def reverse(self):
+        for i in range(4):
+            self.__grid[i] = self.__grid[i][::-1]
+
+    def transpose(self):
+        self.__grid = [list(row) for row in zip(*self.__grid)]
+
+    def move_left(self):
+        changed1 = self.compress()
+        changed2 = self.merge()
+        self.compress()
+        return changed1 or changed2
+    
+    def move_right(self):
+        self.reverse()
+        changed = self.move_left()
+        self.reverse()
+        return changed
+    
+    def move_up(self):
+        self.transpose()
+        changed = self.move_left()
+        self.transpose()
+        return changed
+    
+    def move_down(self):
+        self.transpose()
+        changed = self.move_right()
+        self.transpose()
+        return changed
+    
+    def check_state(self):
+        for i in range(4):
+            for j in range(4):
+                if self.__grid[i][j].get_value() == 2048:
+                    return 'WON'
+        for i in range(4):
+            for j in range(4):
+                if self.__grid[i][j].get_value() == 0:
+                    return 'GAME NOT OVER'
+        for i in range(3):
+            for j in range(3):
+                if self.__grid[i][j].get_value() == self.__grid[i + 1][j].get_value() or self.__grid[i][j].get_value() == self.__grid[i][j + 1].get_value():
+                    return 'GAME NOT OVER'
+        for j in range(3):
+            if self.__grid[3][j].get_value() == self.__grid[3][j + 1].get_value():
+                return 'GAME NOT OVER'
+        for i in range(3):
+            if self.__grid[i][3].get_value() == self.__grid[i + 1][3].get_value():
+                return 'GAME NOT OVER'
+        return 'LOST'
+
+    def get_best_score(self):
+        return self.__best_score
+
+    def reset(self):
+        self.__grid = [[Tile() for _ in range(4)] for _ in range(4)]
+        self.add_new_tile()
+        self.add_new_tile()
+
+
+class Game2048(GameMode):
+    def __init__(self, root, user, mode):
+        self._root = root 
+        self._root.title("2048 OOP")
+        self._root.geometry("400x450")
+        self._board = Board()
+        self.user = user
+        self.mode = mode
+        self._board._Board__best_score = self.get_existing_score()
         self.create_widgets()
-        self.add_new_2()
-        self.add_new_2()
         self.update_grid_ui()
 
     def create_widgets(self):
-        self.frame = tk.Frame(self.root, bg="#bbada0")
-        self.frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-        self.tiles = [[tk.Label(self.frame, text="", width=4, height=2, bg="#cdc1b4", font=('Arial', 24, 'bold'), 
-                                anchor='center') for _ in range(4)] for _ in range(4)]
+        self._frame = tk.Frame(self._root, bg="#bbada0")
+        self._frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        self._tiles = [[tk.Label(self._frame, text="", width=4, height=2, bg="#cdc1b4", font=('Arial', 24, 'bold'), anchor='center') for _ in range(4)] for _ in range(4)]
         for i in range(4):
             for j in range(4):
-                self.tiles[i][j].grid(row=i, column=j, padx=5, pady=5, sticky='nsew')
+                self._tiles[i][j].grid(row=i, column=j, padx=5, pady=5, sticky='nsew')
         for i in range(4):
-            self.frame.grid_columnconfigure(i, weight=1)
-            self.frame.grid_rowconfigure(i, weight=1)
-        self.root.bind("<Key>", self.key_pressed)
-
-    def add_new_2(self):
-        empty_cells = [(i, j) for i in range(4) for j in range(4) if self.grid[i][j] == 0]
-        if empty_cells:
-            i, j = random.choice(empty_cells)
-            self.grid[i][j] = 2
+            self._frame.grid_columnconfigure(i, weight=1)
+            self._frame.grid_rowconfigure(i, weight=1)
+        self._score_label = tk.Label(self._root, text="Best Score: 0", font=('Arial', 18))
+        self._score_label.pack()
+        self._root.bind("<Key>", self.key_pressed)
 
     def update_grid_ui(self):
+        grid_values = self._board.get_grid_values()
         for i in range(4):
             for j in range(4):
-                value = self.grid[i][j]
+                value = grid_values[i][j]
                 color = self.get_color(value)
                 text = str(value) if value != 0 else ''
-                self.tiles[i][j].config(text=text, bg=color)
-                
+                self._tiles[i][j].config(text=text, bg=color)
+        best_score = self._board.get_best_score()
+        self._score_label.config(text=f"Best Score: {best_score}")
+
     def get_color(self, value):
         colors = {
             2: '#fdd0dc', 4: '#fcb3c2', 8: '#f8a2b7',
@@ -52,101 +179,245 @@ class Game2048:
 
     def key_pressed(self, event):
         if event.keysym == 'Up':
-            self.grid, changed = self.move_up(self.grid)
+            changed = self._board.move_up()
         elif event.keysym == 'Down':
-            self.grid, changed = self.move_down(self.grid)
+            changed = self._board.move_down()
         elif event.keysym == 'Left':
-            self.grid, changed = self.move_left(self.grid)
+            changed = self._board.move_left()
         elif event.keysym == 'Right':
-            self.grid, changed = self.move_right(self.grid)
+            changed = self._board.move_right()
         else:
             return
         if changed:
-            self.add_new_2()
+            self._board.add_new_tile()
         self.update_grid_ui()
-        state = self.get_current_state(self.grid)
+        state = self._board.check_state()
         if state == 'WON':
-            messagebox.showinfo("2048", "Congratulations! You won!")
-            self.root.quit()
+            self.show_game_over("Chúc mừng! Bạn đã thắng!")
         elif state == 'LOST':
-            messagebox.showinfo("2048", "Game Over! You lost!")
-            self.root.quit()
+            self.show_game_over("Game Over! Bạn đã thua!")
 
-    def compress(self, mat):
+    def get_existing_score(self):
+        try:
+            with open('best_scores.csv', mode = 'r') as file:
+                reader = csv.reader(file)
+                for row in reader:
+                    if row[0] == self.user.username and row[1] == self.mode:
+                        return int(row[2])
+        except FileNotFoundError:
+            pass
+        return 0
+    
+    def save_best_score(self):
+        updated = False
+        rows = []
+        try:
+            with open('best_scores.csv', mode='r') as file:
+                reader = csv.reader(file)
+                rows = list(reader)
+        except FileNotFoundError:
+            pass
+        with open('best_scores.csv', mode='w', newline ='') as file:
+            writer = csv.writer(file)
+            for row in rows:
+                if row[0] == self.user.username and row[1] == self.mode:
+                    row[2] = self._board.get_best_score() 
+                    updated = True
+                writer.writerow(row)
+            if not updated:
+                writer.writerow([self.user.username, self.mode, self._board.get_best_score()])
+
+    def show_game_over(self, message):
+        replay = messagebox.askyesno("2048", f"{message}\nBạn có muốn chơi lại không?")
+        self.save_best_score()
+        if replay:
+                self._board.reset()
+                self.update_grid_ui()
+        else:
+            self._root.destroy()  
+            root = tk.Tk()  
+            menu = ModeSelection(root, self.user)
+            root.mainloop()
+
+
+           
+class Game2048EasyMode(Game2048):
+    def __init__(self, root, user, mode):
+        super().__init__(root, user, mode)
+        self.start_game() 
+
+    # Phương thức khởi động trò chơi, tạo 2 ô có giá trị là 8
+    def start_game(self):
+        self._board._Board__grid = [[Tile() for _ in range(4)] for _ in range(4)]
+        empty_cells = [(i, j) for i in range(4) for j in range(4)]
+        if len(empty_cells) >= 2:
+            first, second = random.sample(empty_cells, 2)
+            self._board._Board__grid[first[0]][first[1]].set_value(8)  
+            self._board._Board__grid[second[0]][second[1]].set_value(8)  
+        self.update_grid_ui()  # Cập nhật giao diện
+
+    def add_new_tile(self):
+        empty_cells = [(i, j) for i in range(4) for j in range(4) if self._board.get_grid_values()[i][j] == 0]
+        if empty_cells:
+            i, j = random.choice(empty_cells)
+            self._board._Board__grid[i][j].set_value(8)
+
+    # Ghi đè phương thức reset để đảm bảo chỉ tạo 2 ô 8 sau khi chơi lại
+    def reset(self):
+        self._board._Board__grid = [[Tile() for _ in range(4)] for _ in range(4)]
+        empty_cells = [(i, j) for i in range(4) for j in range(4)]
+        if len(empty_cells) >= 2:
+            first, second = random.sample(empty_cells, 2)
+            self._board._Board__grid[first[0]][first[1]].set_value(8)  
+            self._board._Board__grid[second[0]][second[1]].set_value(8)  
+        self.update_grid_ui() 
+
+    def key_pressed(self, event):
+        if event.keysym == 'Up':
+            changed = self._board.move_up()
+        elif event.keysym == 'Down':
+            changed = self._board.move_down()
+        elif event.keysym == 'Left':
+            changed = self._board.move_left()
+        elif event.keysym == 'Right':
+            changed = self._board.move_right()
+        else:
+            return
+
+        if changed:
+            self.add_new_tile()  
+            self.update_grid_ui() 
+
+        state = self._board.check_state()  
+        if state == 'WON':
+            self.show_game_over("Chúc mừng! Bạn đã thắng!")  
+        elif state == 'LOST':
+            self.show_game_over("Game Over! Bạn đã thua!")  
+
+
+class Game2048CompetitionMode(Game2048):
+    def __init__(self, root, user, mode):
+        super().__init__(root, user, mode)
+        self.move_counter = 0  
+        self.update_move_counter()  
+
+    def create_widgets(self):
+        super().create_widgets()
+        self._move_label = tk.Label(self._root, text="Moves: 0", font=('Arial', 18))
+        self._move_label.pack()
+
+    def update_move_counter(self):
+        self._move_label.config(text=f"Moves: {self.move_counter}")
+
+    def key_pressed(self, event):
         changed = False
-        new_mat = [[0] * 4 for _ in range(4)]
-        for i in range(4):
-            pos = 0
-            for j in range(4):
-                if mat[i][j] != 0:
-                    new_mat[i][pos] = mat[i][j]
-                    if j != pos:
-                        changed = True
-                    pos += 1
-        return new_mat, changed
+        if event.keysym == 'Up':
+            changed = self._board.move_up()
+        elif event.keysym == 'Down':
+            changed = self._board.move_down()
+        elif event.keysym == 'Left':
+            changed = self._board.move_left()
+        elif event.keysym == 'Right':
+            changed = self._board.move_right()
+        else:
+            return
 
-    def merge(self, mat):
-        changed = False
-        for i in range(4):
-            for j in range(3):
-                if mat[i][j] == mat[i][j + 1] and mat[i][j] != 0:
-                    mat[i][j] *= 2
-                    mat[i][j + 1] = 0
-                    changed = True
-        return mat, changed
+        if changed:
+            self._board.add_new_tile()  
+            self.move_counter += 1  
+            self.update_move_counter()  
+        self.update_grid_ui() 
 
-    def reverse(self, mat):
-        return [row[::-1] for row in mat]
+        # Kiểm tra trạng thái trò chơi
+        state = self._board.check_state()
+        if state == 'WON':
+            self.show_game_over(f"Chúc mừng! Bạn đã thắng với {self.move_counter} nước đi!")
+        elif state == 'LOST':
+            self.show_game_over(f"Game Over! Bạn đã thua sau {self.move_counter} nước đi!")
 
-    def transpose(self, mat):
-        return [list(row) for row in zip(*mat)]
+    def show_game_over(self, message):
+        super().show_game_over(message)
+        self.move_counter = 0  
+        self.update_move_counter() 
 
-    def move_left(self, grid):
-        new_grid, changed1 = self.compress(grid)
-        new_grid, changed2 = self.merge(new_grid)
-        new_grid, _ = self.compress(new_grid)
-        return new_grid, changed1 or changed2
 
-    def move_right(self, grid):
-        new_grid = self.reverse(grid)
-        new_grid, changed = self.move_left(new_grid)
-        new_grid = self.reverse(new_grid)
-        return new_grid, changed
+class ModeSelection:
+    def __init__(self, root, user):
+        self._root = root
+        self.user = user
+        self._root.title("2048 - Chọn chế độ chơi")
+        self._root.geometry("300x250")  
+        self.create_widgets()
 
-    def move_up(self, grid):
-        new_grid = self.transpose(grid)
-        new_grid, changed = self.move_left(new_grid)
-        new_grid = self.transpose(new_grid)
-        return new_grid, changed
+    def create_widgets(self):
+        label = tk.Label(self._root, text=f" hellu {self.user.username}, Chọn chế độ chơi:", font=('Arial', 16))
+        label.pack(pady=20)
 
-    def move_down(self, grid):
-        new_grid = self.transpose(grid)
-        new_grid, changed = self.move_right(new_grid)
-        new_grid = self.transpose(new_grid)
-        return new_grid, changed
+        normal_button = tk.Button(self._root, text="Normal Mode", font=('Arial', 14), command=self.start_normal_mode)
+        normal_button.pack(pady=10)
 
-    def get_current_state(self, mat):
-        for i in range(4):
-            for j in range(4):
-                if mat[i][j] == 2048:
-                    return 'WON'
-        for i in range(4):
-            for j in range(4):
-                if mat[i][j] == 0:
-                    return 'GAME NOT OVER'
-        for i in range(3):
-            for j in range(3):
-                if mat[i][j] == mat[i + 1][j] or mat[i][j] == mat[i][j + 1]:
-                    return 'GAME NOT OVER'
-        for j in range(3):
-            if mat[3][j] == mat[3][j + 1]:
-                return 'GAME NOT OVER'
-        for i in range(3):
-            if mat[i][3] == mat[i + 1][3]:
-                return 'GAME NOT OVER'
-        return 'LOST'
+        easy_button = tk.Button(self._root, text="Easy Mode", font=('Arial', 14), command=self.start_easy_mode)
+        easy_button.pack(pady=10)
 
+        competition_button = tk.Button(self._root, text="Competition Mode", font=('Arial', 14), command=self.start_competition_mode)
+        competition_button.pack(pady=10)
+        
+        exit_button = tk.Button(self._root, text="Exit", font=('Arial', 14), command=self._root.quit)
+        exit_button.pack(pady=10)
+    
+    def start_normal_mode(self):
+        self._root.destroy()  
+        root = tk.Tk()
+        game = Game2048(root, self.user, 'Normal Mode')
+        game.start()
+        root.mainloop()
+
+    def start_easy_mode(self):
+        self._root.destroy()  
+        root = tk.Tk()
+        game = Game2048EasyMode(root, self.user, 'Easy Mode')
+        game.start()
+        root.mainloop()
+
+    def start_competition_mode(self):
+        self._root.destroy()  
+        root = tk.Tk()
+        game = Game2048CompetitionMode(root, self.user, 'Competition Mode') 
+        game.start() 
+        root.mainloop()
+    def exit_game(self):
+        self._root.destroy()
+
+class Username:
+    def __init__(self, root):
+        self._root = root
+        self._root.title('Nhập tên ng dùng: ')
+        self._root.geometry('300x150')
+        self.create_widgets()
+    
+    def create_widgets(self):
+        label = tk.Label(self._root, text="Nhập tên người dùng:", font=('Arial', 14))
+        label.pack(pady=20)
+
+        self._username_entry = tk.Entry(self._root, font=('Arial', 14))
+        self._username_entry.pack(pady=10)
+
+        submit_button = tk.Button(self._root, text="Submit", font=('Arial', 14), command=self.submit_username)
+        submit_button.pack(pady=10)
+    def submit_username(self):
+        username = self._username_entry.get()
+        if username:
+            self._root.destroy()
+            root = tk.Tk()
+            user = User(username)
+            ModeSelection(root, user)
+            root.mainloop()
+        else:
+            messagebox.showerror("Error", "Vui lòng nhập tên người dùng!")
+
+# Khởi động menu chọn chế độ chơi
 if __name__ == "__main__":
     root = tk.Tk()
-    game = Game2048(root)
+    username = Username(root)
     root.mainloop()
+
